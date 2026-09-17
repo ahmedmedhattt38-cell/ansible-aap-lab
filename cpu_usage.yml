@@ -1,0 +1,49 @@
+---
+- name: Report current CPU usage on the Linux host
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Read the hostname
+      ansible.builtin.command: hostname
+      register: host_name
+      changed_when: false
+
+    - name: Sample CPU usage from /proc/stat
+      ansible.builtin.shell:
+        cmd: |
+          python3 - <<'PY'
+          import time
+
+          def snap():
+              with open('/proc/stat') as handle:
+                  values = [int(v) for v in handle.readline().split()[1:]]
+              return values[3] + values[4], sum(values)
+
+          idle1, total1 = snap()
+          time.sleep(1)
+          idle2, total2 = snap()
+          used = 100.0 * (1 - (idle2 - idle1) / (total2 - total1))
+          print(f"{used:.1f}")
+          PY
+      register: cpu_usage
+      changed_when: false
+
+    - name: Read the load average
+      ansible.builtin.command: cat /proc/loadavg
+      register: load_avg
+      changed_when: false
+
+    - name: Read the logical CPU count
+      ansible.builtin.command: nproc
+      register: cpu_count
+      changed_when: false
+
+    - name: Display current CPU status
+      ansible.builtin.debug:
+        msg:
+          - "Host: {{ host_name.stdout }}"
+          - "Logical CPUs: {{ cpu_count.stdout }}"
+          - "CPU usage now: {{ cpu_usage.stdout }}%"
+          - "Load average (1m 5m 15m): {{ load_avg.stdout.split()[0:3] | join(' ') }}"
