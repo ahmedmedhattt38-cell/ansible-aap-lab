@@ -1,0 +1,47 @@
+---
+- name: Collect Windows PC specifications
+  hosts: windows
+  gather_facts: false
+
+  vars_prompt:
+    - name: ansible_user
+      prompt: Windows username
+      private: false
+
+    - name: ansible_password
+      prompt: Windows password
+      private: true
+
+  vars:
+    ansible_connection: winrm
+    ansible_port: 5985
+    ansible_winrm_transport: ntlm
+
+  tasks:
+    - name: Read hardware and operating system details
+      ansible.windows.win_powershell:
+        script: |
+          $cpu = Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors
+          $gpu = Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM, DriverVersion
+          $os = Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture
+          $computer = Get-CimInstance Win32_ComputerSystem
+          $disks = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" |
+            Select-Object DeviceID,
+              @{Name='SizeGB';Expression={[math]::Round($_.Size / 1GB, 2)}},
+              @{Name='FreeGB';Expression={[math]::Round($_.FreeSpace / 1GB, 2)}}
+
+          [ordered]@{
+            ComputerName = $env:COMPUTERNAME
+            Manufacturer = $computer.Manufacturer
+            Model = $computer.Model
+            MemoryGB = [math]::Round($computer.TotalPhysicalMemory / 1GB, 2)
+            OperatingSystem = $os
+            CPU = $cpu
+            GPU = $gpu
+            Disks = $disks
+          }
+      register: pc_specs
+
+    - name: Display Windows PC specifications
+      ansible.builtin.debug:
+        var: pc_specs.output
