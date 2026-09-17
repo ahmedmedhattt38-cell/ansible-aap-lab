@@ -1,0 +1,42 @@
+---
+- name: Back up important files
+  hosts: all
+  gather_facts: true
+
+  vars:
+    backup_source: /etc
+    backup_dir: /var/backups
+    timestamp: "{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+    archive_path: "{{ backup_dir }}/{{ backup_source | basename }}-{{ timestamp }}.tar.gz"
+
+  tasks:
+    - name: Ensure the backup directory exists
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Create the compressed archive
+      ansible.builtin.archive:
+        path: "{{ backup_source }}"
+        dest: "{{ archive_path }}"
+        format: gz
+      register: backup_archive_result
+
+    - name: Read the archive details
+      ansible.builtin.stat:
+        path: "{{ archive_path }}"
+      register: archive_stat
+
+    - name: Record the backup artifacts
+      ansible.builtin.set_stats:
+        data:
+          backup_status: created
+          backup_archive: "{{ archive_path }}"
+          backup_size_mb: "{{ (archive_stat.stat.size / 1048576) | round(2) }}"
+
+    - name: Display the backup result
+      ansible.builtin.debug:
+        msg:
+          - "Archive: {{ archive_path }}"
+          - "Size: {{ (archive_stat.stat.size / 1048576) | round(2) }} MB"

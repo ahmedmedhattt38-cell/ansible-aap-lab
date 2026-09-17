@@ -1,0 +1,55 @@
+---
+- name: Validate the host after patching
+  hosts: all
+  gather_facts: true
+
+  vars:
+    minimum_disk_free_percent: 10
+    validation_status: unknown
+
+  tasks:
+    - name: Read the current kernel
+      ansible.builtin.command: uname -r
+      register: kernel_now
+      changed_when: false
+
+    - name: Check whether systemd is available
+      ansible.builtin.stat:
+        path: /run/systemd/system
+      register: systemd_dir
+
+    - name: Count failed systemd units
+      ansible.builtin.shell: systemctl --failed --no-legend | wc -l
+      register: failed_units
+      changed_when: false
+      failed_when: false
+      when: systemd_dir.stat.isdir | default(false)
+
+    - name: Read root filesystem usage
+      ansible.builtin.command: df -P /
+      register: root_disk
+      changed_when: false
+
+    - name: Compute the measurements
+      ansible.builtin.set_fact:
+        disk_free_percent: "{{ 100 - (root_disk.stdout_lines[-1].split()[4] | regex_replace('%', '') | int) }}"
+        failed_unit_count: "{{ failed_units.stdout | default('0') | trim | int }}"
+
+    - name: Decide the overall status
+      ansible.builtin.set_fact:
+        validation_status: "{{ 'PROBLEM' if ((failed_unit_count | int) > 0 or (disk_free_percent | int) < (minimum_disk_free_percent | int)) else 'OK' }}"
+
+    - name: Record the validation artifacts
+      ansible.builtin.set_stats:
+        data:
+          validation_status: "{{ validation_status }}"
+          validation_kernel: "{{ kernel_now.stdout }}"
+          validation_detail: "kernel={{ kernel_now.stdout }}, failed_units={{ failed_unit_count }}, disk_free={{ disk_free_percent }}%"
+
+    - name: Display the validation result
+      ansible.builtin.debug:
+        msg:
+          - "Kernel: {{ kernel_now.stdout }}"
+          - "Failed systemd units: {{ failed_unit_count }}"
+          - "Root disk free: {{ disk_free_percent }}%"
+          - "Status: {{ validation_status }}"

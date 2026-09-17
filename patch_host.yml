@@ -1,0 +1,71 @@
+---
+- name: Apply security updates
+  hosts: all
+  gather_facts: true
+
+  vars:
+    patch_status: not-run
+
+  tasks:
+    - name: Detect the available package manager
+      ansible.builtin.shell: |
+        for tool in dnf yum microdnf; do
+          if command -v "$tool" >/dev/null 2>&1; then
+            echo "$tool"
+            exit 0
+          fi
+        done
+        echo none
+      register: package_manager
+      changed_when: false
+
+    - name: Record the kernel before patching
+      ansible.builtin.command: uname -r
+      register: kernel_before
+      changed_when: false
+
+    - name: Apply the security updates
+      ansible.builtin.command: "{{ package_manager.stdout }} -y update --security"
+      register: patch_result
+      changed_when: "'Nothing to do' not in (patch_result.stdout | default(''))"
+      failed_when: patch_result.rc not in [0, 100]
+      when: package_manager.stdout in ['dnf', 'yum']
+
+    - name: Apply the updates with the minimal package manager
+      ansible.builtin.command: "{{ package_manager.stdout }} -y update"
+      register: patch_result_mini
+      failed_when: patch_result_mini.rc not in [0, 100]
+      when: package_manager.stdout == 'microdnf'
+
+    - name: Report that no package manager is available
+      ansible.builtin.set_fact:
+        patch_status: skipped-no-package-manager
+      when: package_manager.stdout == 'none'
+
+    - name: Report that patching completed
+      ansible.builtin.set_fact:
+        patch_status: completed
+      when: package_manager.stdout != 'none'
+
+    - name: Check whether a reboot is required
+      ansible.builtin.command: dnf needs-restarting -r
+      register: reboot_check
+      changed_when: false
+      failed_when: false
+      when: package_manager.stdout == 'dnf'
+
+    - name: Record the patch artifacts
+      ansible.builtin.set_stats:
+        data:
+          patch_tool: "{{ package_manager.stdout }}"
+          patch_status: "{{ patch_status }}"
+          patch_kernel_before: "{{ kernel_before.stdout }}"
+          patch_reboot_required: "{{ (reboot_check.rc | default(0)) == 1 }}"
+
+    - name: Display the patch result
+      ansible.builtin.debug:
+        msg:
+          - "Package manager: {{ package_manager.stdout }}"
+          - "Kernel before: {{ kernel_before.stdout }}"
+          - "Status: {{ patch_status }}"
+          - "Reboot required: {{ (reboot_check.rc | default(0)) == 1 }}"

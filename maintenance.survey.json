@@ -1,0 +1,61 @@
+{
+  "name": "Maintenance inputs",
+  "description": "Credentials and message used when the workflow emails its result",
+  "spec": [
+    {
+      "question_name": "Gmail sender address",
+      "question_description": "Google account that created the App Password",
+      "required": true,
+      "type": "text",
+      "variable": "smtp_username",
+      "min": 6,
+      "max": 254,
+      "default": "",
+      "new_question": true
+    },
+    {
+      "question_name": "Gmail App Password",
+      "question_description": "16-character Google App Password",
+      "required": true,
+      "type": "password",
+      "variable": "smtp_app_password",
+      "min": 16,
+      "max": 32,
+      "default": "",
+      "new_question": true
+    },
+    {
+      "question_name": "Recipient",
+      "question_description": "Address that receives the report",
+      "required": true,
+      "type": "text",
+      "variable": "recipient",
+      "min": 6,
+      "max": 254,
+      "default": "ahmedmedhatt38@gmail.com",
+      "new_question": true
+    },
+    {
+      "question_name": "Subject",
+      "question_description": "Subject line of the report",
+      "required": true,
+      "type": "text",
+      "variable": "subject",
+      "min": 1,
+      "max": 200,
+      "default": "Maintenance result",
+      "new_question": true
+    },
+    {
+      "question_name": "Message",
+      "question_description": "Your own note, added above the signature",
+      "required": false,
+      "type": "textarea",
+      "variable": "message",
+      "min": 0,
+      "max": 4000,
+      "default": "",
+      "new_question": true
+    }
+  ]
+}
