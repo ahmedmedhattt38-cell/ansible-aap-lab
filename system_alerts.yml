@@ -1,0 +1,91 @@
+---
+- name: Monitor disk usage and service health
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars_prompt:
+    - name: smtp_username
+      prompt: Gmail sender address
+      private: false
+
+    - name: smtp_app_password
+      prompt: New Gmail App Password
+      private: true
+
+  vars:
+    disk_threshold: 80
+    monitored_service: sshd
+    alert_recipient: ahmedmedhatt38@gmail.com
+    clean_smtp_username: "{{ smtp_username | trim }}"
+    clean_smtp_app_password: "{{ smtp_app_password | regex_replace('\\s+', '') }}"
+
+  tasks:
+    - name: Read root filesystem usage
+      ansible.builtin.command: df -P /
+      register: root_disk
+      changed_when: false
+
+    - name: Calculate root filesystem usage percentage
+      ansible.builtin.set_fact:
+        root_disk_usage: "{{ root_disk.stdout_lines[-1].split()[4] | regex_replace('%', '') | int }}"
+
+    - name: Gather service information
+      ansible.builtin.service_facts:
+
+    - name: Determine monitored service state
+      ansible.builtin.set_fact:
+        monitored_service_state: >-
+          {{ ansible_facts.services.get(monitored_service + '.service', {}).get('state', 'not found') }}
+
+    - name: Build alert messages
+      ansible.builtin.set_fact:
+        alert_messages: >-
+          {{
+            ([] if root_disk_usage | int < disk_threshold | int else
+              ['Root filesystem usage is ' ~ root_disk_usage ~ '%, at or above the ' ~ disk_threshold ~ '% threshold.'])
+            +
+            ([] if monitored_service_state == 'running' else
+              ['Service ' ~ monitored_service ~ ' is ' ~ monitored_service_state ~ '.'])
+          }}
+
+    - name: Display health summary
+      ansible.builtin.debug:
+        msg:
+          - "Host: {{ ansible_facts.hostname }}"
+          - "Root disk usage: {{ root_disk_usage }}%"
+          - "{{ monitored_service }} state: {{ monitored_service_state }}"
+          - "Alerts: {{ alert_messages | default([]) | length }}"
+
+    - name: Validate Gmail App Password format when an alert exists
+      ansible.builtin.assert:
+        that:
+          - clean_smtp_app_password | length == 16
+        fail_msg: Create a new 16-character Google App Password and enter it without sharing it.
+      when: alert_messages | length > 0
+      no_log: true
+
+    - name: Email the system alert
+      community.general.mail:
+        host: smtp.gmail.com
+        port: 587
+        secure: starttls
+        username: "{{ clean_smtp_username }}"
+        password: "{{ clean_smtp_app_password }}"
+        from: "{{ clean_smtp_username }}"
+        to: "{{ alert_recipient }}"
+        subject: "System alert for {{ ansible_facts.hostname }}"
+        body: |
+          Ansible detected the following issue(s) on {{ ansible_facts.hostname }}:
+
+          {{ alert_messages | join('\n') }}
+
+          Root disk usage: {{ root_disk_usage }}%
+          {{ monitored_service }} state: {{ monitored_service_state }}
+      when: alert_messages | length > 0
+      no_log: true
+
+    - name: Confirm that no email was required
+      ansible.builtin.debug:
+        msg: System health is within the configured limits; no alert email was sent.
+      when: alert_messages | length == 0

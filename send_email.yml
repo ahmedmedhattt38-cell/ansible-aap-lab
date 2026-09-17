@@ -1,0 +1,40 @@
+---
+- name: Send a greeting email to Ahmed
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_prompt:
+    - name: smtp_username
+      prompt: Gmail sender address
+      private: false
+
+    - name: smtp_app_password
+      prompt: New Gmail App Password
+      private: true
+
+  vars:
+    clean_smtp_username: "{{ smtp_username | trim }}"
+    clean_smtp_app_password: "{{ smtp_app_password | regex_replace('\\s+', '') }}"
+
+  tasks:
+    - name: Validate Gmail App Password format
+      ansible.builtin.assert:
+        that:
+          - clean_smtp_app_password | length == 16
+        fail_msg: Create a new 16-character Google App Password and enter it without sharing it.
+        success_msg: Gmail App Password format is valid.
+      no_log: true
+
+    - name: Send Hello Ahmed email
+      community.general.mail:
+        host: smtp.gmail.com
+        port: 587
+        secure: starttls
+        username: "{{ clean_smtp_username }}"
+        password: "{{ clean_smtp_app_password }}"
+        from: "{{ clean_smtp_username }}"
+        to: ahmedmedhatt38@gmail.com
+        subject: Hello Ahmed
+        body: Hello Ahmed
+      no_log: true
