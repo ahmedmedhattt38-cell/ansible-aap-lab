@@ -1,4 +1,5 @@
 ---
+# Automatically published from the RHEL playbook workspace.
 - name: Display system information
   hosts: all
   gather_facts: true
