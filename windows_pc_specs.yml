@@ -3,16 +3,9 @@
   hosts: windows
   gather_facts: false
 
-  vars_prompt:
-    - name: ansible_user
-      prompt: Windows username
-      private: false
-
-    - name: ansible_password
-      prompt: Windows password
-      private: true
-
   vars:
+    ansible_user: ansible_reader
+    ansible_password: "{{ lookup('file', lookup('env', 'HOME') + '/.config/ansible/windows_reader_password') }}"
     ansible_connection: winrm
     ansible_port: 5985
     ansible_winrm_transport: ntlm
