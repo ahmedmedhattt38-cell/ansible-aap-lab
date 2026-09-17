@@ -91,17 +91,21 @@
         SMTP_STARTTLS: "{{ smtp_starttls | lower }}"
         OUTCOME_FILE: "{{ outcome_file }}"
       no_log: true
+      run_once: true
 
     - name: Read the email outcome
       ansible.builtin.slurp:
         src: "{{ outcome_file }}"
       register: email_outcome
+      run_once: true
 
     - name: Report the email outcome
       ansible.builtin.debug:
         msg: "{{ email_outcome.content | b64decode | trim }}"
+      run_once: true
 
     - name: Fail when the email could not be sent
       ansible.builtin.fail:
         msg: "{{ email_outcome.content | b64decode | trim }}"
       when: "'Email sent' not in (email_outcome.content | b64decode)"
+      run_once: true
