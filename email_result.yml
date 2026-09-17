@@ -11,6 +11,7 @@
     subject: Maintenance result
     message: ""
     outcome_file: /tmp/maintenance_email_result.txt
+    report_html_file: /tmp/maintenance_report.html
     signature: |-
       --
       Made by Ansible
@@ -18,49 +19,8 @@
       Les go
     clean_smtp_username: "{{ smtp_username | trim }}"
     clean_smtp_app_password: "{{ smtp_app_password | regex_replace('\\s+', '') }}"
-    report: |-
-      Maintenance report for {{ ansible_facts.hostname | default('host') }}
-
-      Backup:   {{ backup_status | default('see the workflow job in AAP') }}
-      Patch:    {{ patch_status | default('see the workflow job in AAP') }}
-      Validate: {{ validation_status | default('see the workflow job in AAP') }}
-
-      Host check at email time:
-        Kernel:               {{ live_kernel }}
-        Root disk free:       {{ live_disk_free }}%
-        Failed systemd units: {{ live_failed_units }}
-
-      {{ message }}
 
   tasks:
-    - name: Read the current kernel
-      ansible.builtin.command: uname -r
-      register: live_kernel_result
-      changed_when: false
-
-    - name: Read root filesystem usage
-      ansible.builtin.command: df -P /
-      register: live_disk_result
-      changed_when: false
-
-    - name: Check whether systemd is available
-      ansible.builtin.stat:
-        path: /run/systemd/system
-      register: live_systemd_dir
-
-    - name: Count failed systemd units
-      ansible.builtin.shell: systemctl --failed --no-legend | wc -l
-      register: live_failed_result
-      changed_when: false
-      failed_when: false
-      when: live_systemd_dir.stat.isdir | default(false)
-
-    - name: Record the live measurements
-      ansible.builtin.set_fact:
-        live_kernel: "{{ live_kernel_result.stdout }}"
-        live_disk_free: "{{ 100 - (live_disk_result.stdout_lines[-1].split()[4] | regex_replace('%', '') | int) }}"
-        live_failed_units: "{{ live_failed_result.stdout | default('0') | trim }}"
-
     - name: Validate the App Password format
       ansible.builtin.assert:
         that:
@@ -68,54 +28,22 @@
         fail_msg: Enter a valid 16-character Google App Password.
       no_log: true
 
-    - name: Send the report email
-      ansible.builtin.shell:
-        cmd: |
-          python3 - <<'PY'
-          import os
-          import smtplib
-          import ssl
-          from email.message import EmailMessage
-
-          username = os.environ['SMTP_USER']
-          password = os.environ['SMTP_PASS']
-          outcome_file = os.environ['OUTCOME_FILE']
-
-          try:
-              message = EmailMessage()
-              message['From'] = username
-              message['To'] = os.environ['SMTP_TO']
-              message['Subject'] = os.environ['SMTP_SUBJECT']
-              message.set_content(
-                  os.environ['SMTP_REPORT'].rstrip() + '\n\n' + os.environ['SMTP_SIGNATURE'] + '\n'
-              )
-
-              context = ssl.create_default_context()
-              with smtplib.SMTP(os.environ['SMTP_HOST'], int(os.environ['SMTP_PORT']), timeout=30) as server:
-                  if os.environ['SMTP_STARTTLS'] == 'true':
-                      server.starttls(context=context)
-                  server.login(username, password)
-                  server.send_message(message)
-
-              outcome = 'Email sent to ' + message['To']
-          except Exception as error:
-              detail = str(error).replace(password, '***').replace(username, '***')
-              outcome = 'SMTP failure: ' + type(error).__name__ + ': ' + detail
-
-          with open(outcome_file, 'w') as handle:
-              handle.write(outcome + '\n')
-          PY
+    - name: Send the maintenance report
+      ansible.builtin.script: report_email.py
       environment:
+        SMTP_HOST: "{{ smtp_host }}"
+        SMTP_PORT: "{{ smtp_port }}"
+        SMTP_STARTTLS: "{{ smtp_starttls | lower }}"
         SMTP_USER: "{{ clean_smtp_username }}"
         SMTP_PASS: "{{ clean_smtp_app_password }}"
         SMTP_TO: "{{ recipient }}"
         SMTP_SUBJECT: "{{ subject }}"
-        SMTP_REPORT: "{{ report }}"
+        SMTP_MESSAGE: "{{ message }}"
         SMTP_SIGNATURE: "{{ signature }}"
-        SMTP_HOST: "{{ smtp_host }}"
-        SMTP_PORT: "{{ smtp_port }}"
-        SMTP_STARTTLS: "{{ smtp_starttls | lower }}"
         OUTCOME_FILE: "{{ outcome_file }}"
+        REPORT_HTML_FILE: "{{ report_html_file }}"
+        AAP_CONTROLLER_URL: "{{ lookup('env', 'AAP_CONTROLLER_URL') }}"
+        AAP_CONTROLLER_TOKEN: "{{ lookup('env', 'AAP_CONTROLLER_TOKEN') }}"
       no_log: true
 
     - name: Read the email outcome
