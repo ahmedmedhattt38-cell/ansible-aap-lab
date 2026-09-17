@@ -1,0 +1,15 @@
+---
+- name: Display system information
+  hosts: all
+  gather_facts: true
+
+  tasks:
+    - name: Show system summary
+      ansible.builtin.debug:
+        msg:
+          - "Hostname: {{ ansible_facts.hostname }}"
+          - "Operating system: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
+          - "Kernel: {{ ansible_facts.kernel }}"
+          - "Architecture: {{ ansible_facts.architecture }}"
+          - "Processors: {{ ansible_facts.processor_vcpus }}"
+          - "Memory: {{ ansible_facts.memtotal_mb }} MB"
