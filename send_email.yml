@@ -16,6 +16,14 @@
     recipient: ahmedmedhatt38@gmail.com
     subject: Hello Ahmed
     message: Hello Ahmed
+    smtp_host: smtp.gmail.com
+    smtp_port: 587
+    smtp_starttls: true
+    signature: |-
+      --
+      Made by Ansible
+      Ahmed Medhat style
+      Les go
     outcome_file: /tmp/email_result.txt
     clean_smtp_username: "{{ smtp_username | trim }}"
     clean_smtp_app_password: "{{ smtp_app_password | regex_replace('\\s+', '') }}"
@@ -29,7 +37,7 @@
         success_msg: The App Password format is valid.
       no_log: true
 
-    - name: Send the email through Gmail
+    - name: Send the email
       ansible.builtin.shell:
         cmd: |
           python3 - <<'PY'
@@ -43,6 +51,10 @@
           to_address = os.environ['SMTP_TO']
           subject = os.environ['SMTP_SUBJECT']
           body = os.environ['SMTP_BODY']
+          signature = os.environ['SMTP_SIGNATURE']
+          host = os.environ['SMTP_HOST']
+          port = int(os.environ['SMTP_PORT'])
+          use_starttls = os.environ['SMTP_STARTTLS'] == 'true'
           outcome_file = os.environ['OUTCOME_FILE']
 
           try:
@@ -50,11 +62,12 @@
               message['From'] = username
               message['To'] = to_address
               message['Subject'] = subject
-              message.set_content(body)
+              message.set_content(body.rstrip() + '\n\n' + signature + '\n')
 
               context = ssl.create_default_context()
-              with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as server:
-                  server.starttls(context=context)
+              with smtplib.SMTP(host, port, timeout=30) as server:
+                  if use_starttls:
+                      server.starttls(context=context)
                   server.login(username, password)
                   server.send_message(message)
 
@@ -72,6 +85,10 @@
         SMTP_TO: "{{ recipient }}"
         SMTP_SUBJECT: "{{ subject }}"
         SMTP_BODY: "{{ message }}"
+        SMTP_SIGNATURE: "{{ signature }}"
+        SMTP_HOST: "{{ smtp_host }}"
+        SMTP_PORT: "{{ smtp_port }}"
+        SMTP_STARTTLS: "{{ smtp_starttls | lower }}"
         OUTCOME_FILE: "{{ outcome_file }}"
       no_log: true
 
