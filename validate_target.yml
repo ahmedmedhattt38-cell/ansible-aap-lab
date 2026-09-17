@@ -20,19 +20,16 @@
         - name: Read the service state
           ansible.builtin.shell:
             cmd: |
-              state=
-              note="checked with systemctl"
-              if command -v systemctl >/dev/null 2>&1; then
+              state=not-applicable
+              note="systemd is not available on this target, so the service state cannot be validated"
+              if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
                 state=$(systemctl is-active {{ target }} 2>/dev/null)
+                note="checked with systemctl"
+              elif pgrep -x {{ target }} >/dev/null 2>&1; then
+                state=active
+                note="systemd is not available, but the process was found"
               fi
-              if [ -z "$state" ] || [ "$state" = "unknown" ]; then
-                note="systemd is not available here, so processes were checked instead"
-                if pgrep -x {{ target }} >/dev/null 2>&1; then
-                  state=active
-                else
-                  state=inactive
-                fi
-              fi
+              [ -z "$state" ] && state=unknown
               printf '%s\n%s\n' "$state" "$note"
           register: service_result
           changed_when: false
@@ -42,7 +39,7 @@
           ansible.builtin.set_fact:
             result_state: "{{ service_result.stdout_lines[0] | default('unknown') }}"
             result_detail: "Service {{ target }} is {{ service_result.stdout_lines[0] | default('unknown') }} ({{ service_result.stdout_lines[1] | default('no detail') }})"
-            problem: "{{ (expected_state == 'running' and service_result.stdout_lines[0] != 'active') or (expected_state == 'stopped' and service_result.stdout_lines[0] == 'active') }}"
+            problem: "{{ (expected_state == 'running' and service_result.stdout_lines[0] in ['inactive', 'failed', 'unknown']) or (expected_state == 'stopped' and service_result.stdout_lines[0] == 'active') }}"
 
     - name: Validate that a port is listening
       when: check_type == 'port'
