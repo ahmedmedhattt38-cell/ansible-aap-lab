@@ -14,6 +14,7 @@
 
   vars:
     recipient: ahmedmedhatt38@gmail.com
+    outcome_file: /tmp/email_result.txt
     clean_smtp_username: "{{ smtp_username | trim }}"
     clean_smtp_app_password: "{{ smtp_app_password | regex_replace('\\s+', '') }}"
 
@@ -37,28 +38,47 @@
 
           username = os.environ['SMTP_USER']
           password = os.environ['SMTP_PASS']
+          to_address = os.environ['SMTP_TO']
+          outcome_file = os.environ['OUTCOME_FILE']
 
-          message = EmailMessage()
-          message['From'] = username
-          message['To'] = os.environ['SMTP_TO']
-          message['Subject'] = 'Hello Ahmed'
-          message.set_content('Hello Ahmed')
+          try:
+              message = EmailMessage()
+              message['From'] = username
+              message['To'] = to_address
+              message['Subject'] = 'Hello Ahmed'
+              message.set_content('Hello Ahmed')
 
-          context = ssl.create_default_context()
-          with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as server:
-              server.starttls(context=context)
-              server.login(username, password)
-              server.send_message(message)
+              context = ssl.create_default_context()
+              with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as server:
+                  server.starttls(context=context)
+                  server.login(username, password)
+                  server.send_message(message)
 
-          print('Email sent to ' + os.environ['SMTP_TO'])
+              outcome = 'Email sent to ' + to_address
+          except Exception as error:
+              detail = str(error).replace(password, '***').replace(username, '***')
+              outcome = 'SMTP failure: ' + type(error).__name__ + ': ' + detail
+
+          with open(outcome_file, 'w') as handle:
+              handle.write(outcome + '\n')
           PY
       environment:
         SMTP_USER: "{{ clean_smtp_username }}"
         SMTP_PASS: "{{ clean_smtp_app_password }}"
         SMTP_TO: "{{ recipient }}"
+        OUTCOME_FILE: "{{ outcome_file }}"
       no_log: true
-      register: mail_result
 
-    - name: Show the result
+    - name: Read the email outcome
+      ansible.builtin.slurp:
+        src: "{{ outcome_file }}"
+      register: email_outcome
+
+    - name: Report the email outcome
       ansible.builtin.debug:
-        msg: "{{ mail_result.stdout }}"
+        msg: "{{ email_outcome.content | b64decode | trim }}"
+
+    - name: Fail when the email could not be sent
+      ansible.builtin.fail:
+        msg: "{{ email_outcome.content | b64decode | trim }}"
+      when: "'Email sent' not in (email_outcome.content | b64decode)"
