@@ -27,12 +27,19 @@
 
     - name: Create the compressed archive
       ansible.builtin.shell: >-
-        tar -czf {{ archive_path }} -C {{ backup_source | dirname }} {{ backup_source | basename }}
+        tar --ignore-failed-read -czf {{ archive_path }}
+        -C {{ backup_source | dirname }} {{ backup_source | basename }}
+      register: backup_archive_result
 
     - name: Read the archive details
       ansible.builtin.stat:
         path: "{{ archive_path }}"
       register: archive_stat
+
+    - name: Fail when the archive was not created
+      ansible.builtin.fail:
+        msg: "The archive could not be created at {{ archive_path }}"
+      when: not archive_stat.stat.exists
 
     - name: Record the backup artifacts
       ansible.builtin.set_stats:
