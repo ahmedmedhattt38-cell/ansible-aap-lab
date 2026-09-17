@@ -5,21 +5,29 @@
 
   vars:
     backup_source: /etc
-    backup_dir: /var/backups
     timestamp: "{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
-    archive_path: "{{ backup_dir }}/{{ backup_source | basename }}-{{ timestamp }}.tar.gz"
 
   tasks:
-    - name: Ensure the backup directory exists
-      ansible.builtin.file:
-        path: "{{ backup_dir }}"
-        state: directory
-        mode: "0755"
+    - name: Find a writable backup directory
+      ansible.builtin.shell: |
+        for candidate in /var/backups /tmp/maintenance-backups; do
+          if mkdir -p "$candidate" 2>/dev/null && [ -w "$candidate" ]; then
+            echo "$candidate"
+            exit 0
+          fi
+        done
+        echo /tmp
+      register: backup_dir_lookup
+      changed_when: false
+
+    - name: Set the archive path
+      ansible.builtin.set_fact:
+        backup_dir: "{{ backup_dir_lookup.stdout | trim }}"
+        archive_path: "{{ (backup_dir_lookup.stdout | trim) }}/{{ backup_source | basename }}-{{ timestamp }}.tar.gz"
 
     - name: Create the compressed archive
       ansible.builtin.shell: >-
         tar -czf {{ archive_path }} -C {{ backup_source | dirname }} {{ backup_source | basename }}
-      register: backup_archive_result
 
     - name: Read the archive details
       ansible.builtin.stat:

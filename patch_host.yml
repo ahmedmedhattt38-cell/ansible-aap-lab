@@ -32,13 +32,17 @@
       failed_when: false
       when: package_manager.stdout != 'none'
 
-    - name: Interpret the patch outcome
+    - name: Capture the patch output
       ansible.builtin.set_fact:
         patch_output: "{{ (patch_result.stdout | default('')) ~ '\n' ~ (patch_result.stderr | default('')) }}"
+
+    - name: Interpret the patch outcome
+      ansible.builtin.set_fact:
         patch_status: >-
           {%- if package_manager.stdout == 'none' -%}skipped-no-package-manager
-          {%- elif (patch_result.rc | default(0)) not in [0, 100] and 'repositor' in ((patch_result.stdout | default('')) ~ (patch_result.stderr | default('')) | lower) -%}skipped-no-repositories
           {%- elif (patch_result.rc | default(0)) in [0, 100] -%}completed
+          {%- elif 'repositor' in (patch_output | lower) -%}skipped-no-repositories
+          {%- elif ('permission denied' in (patch_output | lower)) or ('failed to create' in (patch_output | lower)) or ('read-only' in (patch_output | lower)) -%}skipped-insufficient-privileges
           {%- else -%}failed
           {%- endif -%}
 
