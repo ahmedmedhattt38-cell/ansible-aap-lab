@@ -1,14 +1,60 @@
 ---
-- name: Email the maintenance result
+- name: Collect machine details for the report
   hosts: all
   gather_facts: true
+
+  vars:
+    minimum_disk_free_percent: 10
+
+  tasks:
+    - name: Read the kernel version
+      ansible.builtin.command: uname -r
+      register: report_kernel
+      changed_when: false
+
+    - name: Read root filesystem usage
+      ansible.builtin.command: df -P /
+      register: report_disk
+      changed_when: false
+
+    - name: Check whether systemd is available
+      ansible.builtin.stat:
+        path: /run/systemd/system
+      register: report_systemd
+
+    - name: Count failed systemd units
+      ansible.builtin.shell: systemctl --failed --no-legend | wc -l
+      register: report_failed
+      changed_when: false
+      failed_when: false
+      when: report_systemd.stat.isdir | default(false)
+
+    - name: Build the report row for this machine
+      ansible.builtin.set_fact:
+        report_disk_free: "{{ 100 - (report_disk.stdout_lines[-1].split()[4] | regex_replace('%', '') | int) }}"
+        report_failed_units: "{{ report_failed.stdout | default('0') | trim }}"
+
+    - name: Publish the machine row
+      ansible.builtin.set_fact:
+        fleet_row:
+          machine: "{{ inventory_hostname }}"
+          hostname: "{{ ansible_facts.hostname | default(inventory_hostname) }}"
+          os: "{{ ansible_facts.distribution | default('unknown') }}"
+          kernel: "{{ report_kernel.stdout }}"
+          disk_free: "{{ report_disk_free }}"
+          failed_units: "{{ report_failed_units }}"
+          status: "{{ 'PROBLEM' if ((report_failed_units | int) > 0 or (report_disk_free | int) < (minimum_disk_free_percent | int)) else 'OK' }}"
+
+- name: Send the fleet report
+  hosts: localhost
+  gather_facts: false
 
   vars:
     smtp_host: smtp.gmail.com
     smtp_port: 587
     smtp_starttls: true
     recipient: ahmedmedhatt38@gmail.com
-    subject: Maintenance result
+    subject: Fleet maintenance result
     message: ""
     outcome_file: /tmp/maintenance_email_result.txt
     report_html_file: /tmp/maintenance_report.html
@@ -21,6 +67,18 @@
     clean_smtp_app_password: "{{ smtp_app_password | regex_replace('\\s+', '') }}"
 
   tasks:
+    - name: Build the fleet rows from every machine
+      ansible.builtin.set_fact:
+        fleet_rows: "{{ fleet_rows | default([]) + [hostvars[item].fleet_row] }}"
+      loop: "{{ groups['all'] | default([]) }}"
+      when: hostvars[item].fleet_row is defined
+      run_once: true
+
+    - name: Show how many machines were collected
+      ansible.builtin.debug:
+        msg: "Collected results from {{ fleet_rows | default([]) | length }} machines"
+      run_once: true
+
     - name: Validate the App Password format
       ansible.builtin.assert:
         that:
@@ -42,6 +100,7 @@
         SMTP_SIGNATURE: "{{ signature }}"
         OUTCOME_FILE: "{{ outcome_file }}"
         REPORT_HTML_FILE: "{{ report_html_file }}"
+        HOST_DATA_JSON: "{{ fleet_rows | default([]) | to_json }}"
         AAP_CONTROLLER_URL: "{{ lookup('env', 'AAP_CONTROLLER_URL') }}"
         AAP_CONTROLLER_TOKEN: "{{ lookup('env', 'AAP_CONTROLLER_TOKEN') }}"
       no_log: true
