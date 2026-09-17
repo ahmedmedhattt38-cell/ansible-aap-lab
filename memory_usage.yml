@@ -1,0 +1,34 @@
+---
+- name: Report current memory usage on the Linux host
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Read memory statistics
+      ansible.builtin.shell:
+        cmd: |
+          python3 - <<'PY'
+          info = {}
+          with open('/proc/meminfo') as handle:
+              for line in handle:
+                  key, value = line.split(':', 1)
+                  info[key] = int(value.split()[0])
+          total = info['MemTotal']
+          available = info['MemAvailable']
+          used = total - available
+          print(f"{total / 1048576:.1f}")
+          print(f"{used / 1048576:.1f}")
+          print(f"{available / 1048576:.1f}")
+          print(f"{used * 100 / total:.1f}")
+          PY
+      register: mem
+      changed_when: false
+
+    - name: Display current memory usage
+      ansible.builtin.debug:
+        msg:
+          - "Total memory: {{ mem.stdout_lines[0] }} GB"
+          - "Used memory: {{ mem.stdout_lines[1] }} GB"
+          - "Available memory: {{ mem.stdout_lines[2] }} GB"
+          - "Memory usage now: {{ mem.stdout_lines[3] }}%"
