@@ -1,0 +1,28 @@
+{
+  "name": "Email inputs",
+  "description": "Credentials used to send the message",
+  "spec": [
+    {
+      "question_name": "Gmail sender address",
+      "question_description": "Google account that created the App Password",
+      "required": true,
+      "type": "text",
+      "variable": "smtp_username",
+      "min": 6,
+      "max": 254,
+      "default": "",
+      "new_question": true
+    },
+    {
+      "question_name": "Gmail App Password",
+      "question_description": "16-character Google App Password",
+      "required": true,
+      "type": "password",
+      "variable": "smtp_app_password",
+      "min": 16,
+      "max": 32,
+      "default": "",
+      "new_question": true
+    }
+  ]
+}
