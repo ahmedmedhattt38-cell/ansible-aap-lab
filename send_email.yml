@@ -14,6 +14,8 @@
 
   vars:
     recipient: ahmedmedhatt38@gmail.com
+    subject: Hello Ahmed
+    message: Hello Ahmed
     outcome_file: /tmp/email_result.txt
     clean_smtp_username: "{{ smtp_username | trim }}"
     clean_smtp_app_password: "{{ smtp_app_password | regex_replace('\\s+', '') }}"
@@ -39,14 +41,16 @@
           username = os.environ['SMTP_USER']
           password = os.environ['SMTP_PASS']
           to_address = os.environ['SMTP_TO']
+          subject = os.environ['SMTP_SUBJECT']
+          body = os.environ['SMTP_BODY']
           outcome_file = os.environ['OUTCOME_FILE']
 
           try:
               message = EmailMessage()
               message['From'] = username
               message['To'] = to_address
-              message['Subject'] = 'Hello Ahmed'
-              message.set_content('Hello Ahmed')
+              message['Subject'] = subject
+              message.set_content(body)
 
               context = ssl.create_default_context()
               with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as server:
@@ -54,7 +58,7 @@
                   server.login(username, password)
                   server.send_message(message)
 
-              outcome = 'Email sent to ' + to_address
+              outcome = 'Email sent to ' + to_address + ' with subject "' + subject + '"'
           except Exception as error:
               detail = str(error).replace(password, '***').replace(username, '***')
               outcome = 'SMTP failure: ' + type(error).__name__ + ': ' + detail
@@ -66,6 +70,8 @@
         SMTP_USER: "{{ clean_smtp_username }}"
         SMTP_PASS: "{{ clean_smtp_app_password }}"
         SMTP_TO: "{{ recipient }}"
+        SMTP_SUBJECT: "{{ subject }}"
+        SMTP_BODY: "{{ message }}"
         OUTCOME_FILE: "{{ outcome_file }}"
       no_log: true
 
