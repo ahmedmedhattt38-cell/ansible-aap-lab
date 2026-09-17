@@ -17,10 +17,8 @@
         mode: "0755"
 
     - name: Create the compressed archive
-      ansible.builtin.archive:
-        path: "{{ backup_source }}"
-        dest: "{{ archive_path }}"
-        format: gz
+      ansible.builtin.shell: >-
+        tar -czf {{ archive_path }} -C {{ backup_source | dirname }} {{ backup_source | basename }}
       register: backup_archive_result
 
     - name: Read the archive details

@@ -5,6 +5,7 @@
 
   vars:
     patch_status: not-run
+    patch_command: "{{ package_manager.stdout }} -y update{{ ' --security' if package_manager.stdout in ['dnf', 'yum'] else '' }}"
 
   tasks:
     - name: Detect the available package manager
@@ -24,35 +25,36 @@
       register: kernel_before
       changed_when: false
 
-    - name: Apply the security updates
-      ansible.builtin.command: "{{ package_manager.stdout }} -y update --security"
+    - name: Apply the updates
+      ansible.builtin.command: "{{ patch_command }}"
       register: patch_result
-      changed_when: "'Nothing to do' not in (patch_result.stdout | default(''))"
-      failed_when: patch_result.rc not in [0, 100]
-      when: package_manager.stdout in ['dnf', 'yum']
-
-    - name: Apply the updates with the minimal package manager
-      ansible.builtin.command: "{{ package_manager.stdout }} -y update"
-      register: patch_result_mini
-      failed_when: patch_result_mini.rc not in [0, 100]
-      when: package_manager.stdout == 'microdnf'
-
-    - name: Report that no package manager is available
-      ansible.builtin.set_fact:
-        patch_status: skipped-no-package-manager
-      when: package_manager.stdout == 'none'
-
-    - name: Report that patching completed
-      ansible.builtin.set_fact:
-        patch_status: completed
+      changed_when: false
+      failed_when: false
       when: package_manager.stdout != 'none'
+
+    - name: Interpret the patch outcome
+      ansible.builtin.set_fact:
+        patch_output: "{{ (patch_result.stdout | default('')) ~ '\n' ~ (patch_result.stderr | default('')) }}"
+        patch_status: >-
+          {%- if package_manager.stdout == 'none' -%}skipped-no-package-manager
+          {%- elif (patch_result.rc | default(0)) not in [0, 100] and 'repositor' in ((patch_result.stdout | default('')) ~ (patch_result.stderr | default('')) | lower) -%}skipped-no-repositories
+          {%- elif (patch_result.rc | default(0)) in [0, 100] -%}completed
+          {%- else -%}failed
+          {%- endif -%}
 
     - name: Check whether a reboot is required
       ansible.builtin.command: dnf needs-restarting -r
       register: reboot_check
       changed_when: false
       failed_when: false
-      when: package_manager.stdout == 'dnf'
+      when:
+        - package_manager.stdout == 'dnf'
+        - patch_status == 'completed'
+
+    - name: Fail the job when patching did not work
+      ansible.builtin.fail:
+        msg: "{{ patch_output | trim }}"
+      when: patch_status == 'failed'
 
     - name: Record the patch artifacts
       ansible.builtin.set_stats:
