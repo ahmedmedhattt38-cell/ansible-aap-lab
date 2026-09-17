@@ -31,3 +31,11 @@
     - name: Display Windows PC specifications
       ansible.builtin.debug:
         var: pc_specs.output
+
+    - name: Save the specifications report on the Linux controller
+      ansible.builtin.copy:
+        content: "{{ pc_specs.output | to_nice_json }}\n"
+        dest: "{{ lookup('env', 'HOME') }}/windows_pc_specs_report.json"
+        mode: "0644"
+      delegate_to: localhost
+      become: false
