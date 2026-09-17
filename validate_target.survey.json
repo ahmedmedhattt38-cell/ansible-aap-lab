@@ -1,0 +1,64 @@
+{
+  "name": "Generic validation inputs",
+  "description": "Choose what to validate on the target host",
+  "spec": [
+    {
+      "question_name": "What should I check?",
+      "question_description": "Type of resource to validate",
+      "required": true,
+      "type": "multiplechoice",
+      "variable": "check_type",
+      "min": null,
+      "max": null,
+      "default": "service",
+      "choices": ["service", "port", "file", "directory", "package", "user", "disk", "memory", "url"],
+      "new_question": true
+    },
+    {
+      "question_name": "Target",
+      "question_description": "Service name, port number, path, package name, username, mount point, or URL",
+      "required": true,
+      "type": "text",
+      "variable": "target",
+      "min": 1,
+      "max": 1024,
+      "default": "sshd",
+      "new_question": true
+    },
+    {
+      "question_name": "Expected state",
+      "question_description": "Used by the service, file, directory, package, and user checks",
+      "required": true,
+      "type": "multiplechoice",
+      "variable": "expected_state",
+      "min": null,
+      "max": null,
+      "default": "running",
+      "choices": ["running", "stopped", "present", "absent"],
+      "new_question": true
+    },
+    {
+      "question_name": "Minimum value",
+      "question_description": "Minimum free disk percent or available memory percent",
+      "required": true,
+      "type": "integer",
+      "variable": "min_value",
+      "min": 0,
+      "max": 100,
+      "default": 20,
+      "new_question": true
+    },
+    {
+      "question_name": "Fail the job on a problem?",
+      "question_description": "Choose no to report the result without failing",
+      "required": true,
+      "type": "multiplechoice",
+      "variable": "fail_on_problem",
+      "min": null,
+      "max": null,
+      "default": "yes",
+      "choices": ["yes", "no"],
+      "new_question": true
+    }
+  ]
+}

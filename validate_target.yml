@@ -1,0 +1,159 @@
+---
+- name: Validate a resource on the target host
+  hosts: all
+  gather_facts: false
+
+  vars:
+    check_type: service
+    target: sshd
+    expected_state: running
+    min_value: 20
+    fail_on_problem: "yes"
+    result_state: unknown
+    result_detail: No check has run yet
+    problem: false
+
+  tasks:
+    - name: Validate that a service is running or stopped
+      when: check_type == 'service'
+      block:
+        - name: Read the service state
+          ansible.builtin.command: systemctl is-active {{ target }}
+          register: service_result
+          changed_when: false
+          failed_when: false
+
+        - name: Record the service result
+          ansible.builtin.set_fact:
+            result_state: "{{ service_result.stdout | default('unknown') }}"
+            result_detail: "Service {{ target }} is {{ service_result.stdout | default('unknown') }}"
+            problem: "{{ (expected_state == 'running' and service_result.stdout != 'active') or (expected_state == 'stopped' and service_result.stdout == 'active') }}"
+
+    - name: Validate that a port is listening
+      when: check_type == 'port'
+      block:
+        - name: Count listening sockets for the port
+          ansible.builtin.shell: ss -H -tuln | grep -c ":{{ target }} "
+          register: port_result
+          changed_when: false
+          failed_when: false
+
+        - name: Record the port result
+          ansible.builtin.set_fact:
+            result_state: "{{ 'listening' if port_result.stdout | int > 0 else 'not listening' }}"
+            result_detail: "Port {{ target }} is {{ 'listening' if port_result.stdout | int > 0 else 'not listening' }}"
+            problem: "{{ (port_result.stdout | int) == 0 }}"
+
+    - name: Validate that a path exists
+      when: check_type in ['file', 'directory']
+      block:
+        - name: Read the path state
+          ansible.builtin.stat:
+            path: "{{ target }}"
+          register: path_result
+
+        - name: Record the path result
+          ansible.builtin.set_fact:
+            result_state: "{{ 'present' if path_result.stat.exists else 'absent' }}"
+            result_detail: "Path {{ target }} is {{ 'present' if path_result.stat.exists else 'absent' }}"
+            problem: "{{ (expected_state == 'present' and not path_result.stat.exists) or (expected_state == 'absent' and path_result.stat.exists) }}"
+
+    - name: Validate that a package is installed
+      when: check_type == 'package'
+      block:
+        - name: Query the package
+          ansible.builtin.command: rpm -q {{ target }}
+          register: package_result
+          changed_when: false
+          failed_when: false
+
+        - name: Record the package result
+          ansible.builtin.set_fact:
+            result_state: "{{ 'installed' if package_result.rc == 0 else 'not installed' }}"
+            result_detail: "Package {{ target }} is {{ 'installed' if package_result.rc == 0 else 'not installed' }}"
+            problem: "{{ (expected_state == 'present' and package_result.rc != 0) or (expected_state == 'absent' and package_result.rc == 0) }}"
+
+    - name: Validate that a user exists
+      when: check_type == 'user'
+      block:
+        - name: Query the user
+          ansible.builtin.command: id -u {{ target }}
+          register: user_result
+          changed_when: false
+          failed_when: false
+
+        - name: Record the user result
+          ansible.builtin.set_fact:
+            result_state: "{{ 'present' if user_result.rc == 0 else 'absent' }}"
+            result_detail: "User {{ target }} is {{ 'present' if user_result.rc == 0 else 'absent' }}"
+            problem: "{{ (expected_state == 'present' and user_result.rc != 0) or (expected_state == 'absent' and user_result.rc == 0) }}"
+
+    - name: Validate free space on a filesystem
+      when: check_type == 'disk'
+      block:
+        - name: Read the filesystem usage
+          ansible.builtin.command: df -P {{ target }}
+          register: disk_result
+          changed_when: false
+
+        - name: Record the disk result
+          ansible.builtin.set_fact:
+            result_state: "{{ 100 - (disk_result.stdout_lines[-1].split()[4] | regex_replace('%', '') | int) }}% free"
+            result_detail: "Mount {{ target }} has {{ 100 - (disk_result.stdout_lines[-1].split()[4] | regex_replace('%', '') | int) }}% free, minimum is {{ min_value }}%"
+            problem: "{{ (100 - (disk_result.stdout_lines[-1].split()[4] | regex_replace('%', '') | int)) < (min_value | int) }}"
+
+    - name: Validate available memory
+      when: check_type == 'memory'
+      block:
+        - name: Read the available memory percentage
+          ansible.builtin.shell:
+            cmd: |
+              python3 - <<'PY'
+              info = {}
+              with open('/proc/meminfo') as handle:
+                  for line in handle:
+                      key, value = line.split(':', 1)
+                      info[key] = int(value.split()[0])
+              print(info['MemAvailable'] * 100 // info['MemTotal'])
+              PY
+          register: memory_result
+          changed_when: false
+
+        - name: Record the memory result
+          ansible.builtin.set_fact:
+            result_state: "{{ memory_result.stdout }}% available"
+            result_detail: "Available memory is {{ memory_result.stdout }}%, minimum is {{ min_value }}%"
+            problem: "{{ (memory_result.stdout | int) < (min_value | int) }}"
+
+    - name: Validate that a URL answers with HTTP 200
+      when: check_type == 'url'
+      block:
+        - name: Query the URL
+          ansible.builtin.uri:
+            url: "{{ target }}"
+            status_code: 200
+          register: url_result
+          failed_when: false
+
+        - name: Record the URL result
+          ansible.builtin.set_fact:
+            result_state: "{{ url_result.status | default('unreachable') }}"
+            result_detail: "URL {{ target }} returned {{ url_result.status | default('no response') }}"
+            problem: "{{ (url_result.status | default(0)) != 200 }}"
+
+    - name: Display the validation result
+      ansible.builtin.debug:
+        msg:
+          - "Check type: {{ check_type }}"
+          - "Target: {{ target }}"
+          - "Expected: {{ expected_state }}"
+          - "Observed: {{ result_state }}"
+          - "Detail: {{ result_detail }}"
+          - "Result: {{ 'PROBLEM' if problem | bool else 'OK' }}"
+
+    - name: Fail the job when a problem was found
+      ansible.builtin.fail:
+        msg: "{{ result_detail }}"
+      when:
+        - problem | bool
+        - fail_on_problem | bool
