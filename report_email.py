@@ -184,7 +184,7 @@ def steps_table(steps):
             '</tr>' % (TD, escape(step['name']), TD, badge(step['status']), TD, job)
         )
     return (
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        '<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" '
         'style="border-collapse:collapse;border:1px solid %s;border-radius:8px;overflow:hidden;">'
         '<tr><th style="%s">Step</th><th style="%s">Result</th>'
         '<th style="%s" align="right">Job</th></tr>%s</table>'
@@ -204,7 +204,7 @@ def facts_table(rows):
         )
         background = '#fbfcfd' if background == CARD_BG else CARD_BG
     return (
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        '<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" '
         'style="border-collapse:collapse;border:1px solid %s;border-radius:8px;overflow:hidden;">%s</table>'
         % (BORDER, ''.join(body))
     )
