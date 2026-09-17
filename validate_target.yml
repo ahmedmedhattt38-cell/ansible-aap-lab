@@ -18,16 +18,31 @@
       when: check_type == 'service'
       block:
         - name: Read the service state
-          ansible.builtin.command: systemctl is-active {{ target }}
+          ansible.builtin.shell:
+            cmd: |
+              state=
+              note="checked with systemctl"
+              if command -v systemctl >/dev/null 2>&1; then
+                state=$(systemctl is-active {{ target }} 2>/dev/null)
+              fi
+              if [ -z "$state" ] || [ "$state" = "unknown" ]; then
+                note="systemd is not available here, so processes were checked instead"
+                if pgrep -x {{ target }} >/dev/null 2>&1; then
+                  state=active
+                else
+                  state=inactive
+                fi
+              fi
+              printf '%s\n%s\n' "$state" "$note"
           register: service_result
           changed_when: false
           failed_when: false
 
         - name: Record the service result
           ansible.builtin.set_fact:
-            result_state: "{{ service_result.stdout | default('unknown') }}"
-            result_detail: "Service {{ target }} is {{ service_result.stdout | default('unknown') }}"
-            problem: "{{ (expected_state == 'running' and service_result.stdout != 'active') or (expected_state == 'stopped' and service_result.stdout == 'active') }}"
+            result_state: "{{ service_result.stdout_lines[0] | default('unknown') }}"
+            result_detail: "Service {{ target }} is {{ service_result.stdout_lines[0] | default('unknown') }} ({{ service_result.stdout_lines[1] | default('no detail') }})"
+            problem: "{{ (expected_state == 'running' and service_result.stdout_lines[0] != 'active') or (expected_state == 'stopped' and service_result.stdout_lines[0] == 'active') }}"
 
     - name: Validate that a port is listening
       when: check_type == 'port'
